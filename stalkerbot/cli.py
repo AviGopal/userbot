@@ -9,7 +9,6 @@ from tqdm.asyncio import tqdm
 
 from stalkerbot.stalker import Stalker
 
-
 @click.Group
 def cli():
     pass
@@ -19,7 +18,7 @@ def cli():
 @click.option("--silent", is_flag=True, default=False)
 @click.option("--no-auth", is_flag=True, default=False)
 @click.option("-q", "--query", default="language:python3")
-@click.option("-z", "--page_size", default=250)
+@click.option("-z", "--page-size", default=250)
 @click.option("-c", "--continue-from", default=1)
 @click.option("-o", "--output", default="data.csv")
 @click.option("-w", "--workers", default=4)
@@ -115,5 +114,7 @@ def start(
     try:
         stalker.start()
     except click.exceptions.Abort:
-        click.echo('exiting...')
+        click.echo("exiting...")
         stalker.stop()
+    if tq:
+        tq.write("")

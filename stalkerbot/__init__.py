@@ -10,15 +10,19 @@ dictConfig(
                 "datefmt": "%Y-%m-%d %H:%M:%S",
             }
         },
-        "handlers": {
-            "default": {
-                "class": "logging.handlers.RotatingFileHandler",
-                "formatter": "default",
-                "filename": "stalkerbot.log",
-                "maxBytes": 2048,
-                "backupCount": 0,
-            }
-        },
-        "disable_existing_loggers": True,
+        # "handlers": {
+        #     "default": {
+        #         "class": "logging.handlers.RotatingFileHandler",
+        #         "formatter": "default",
+        #         "filename": "stalkerbot.log",
+        #         "maxBytes": 2048,
+        #         "backupCount": 0,
+        #     }
+        # },
+        # "disable_existing_loggers": True,
     }
 )
+
+root = logging.getLogger()
+file_handler = logging.handlers.RotatingFileHandler('stalkerbot.log')
+root.addHandler(file_handler)
