@@ -23,7 +23,10 @@ class Stalker:
         workers: int = 1,
         page_size: int = 100,
         continue_from: int = 1,
+        early_stop: int = 0,
         output_path: str = "github_users.csv",
+        sort: str = "followers",
+        order: str = "desc",
         tqcb: tqdm = None,
     ):
         if workers < 1:
@@ -42,13 +45,15 @@ class Stalker:
         self.total = 0
         self.processed = 0
         self.start_time = datetime.datetime.utcnow()
-
+        self.early_stop = early_stop
         self.search = Search(
-            HTTPBasicAuth(username, token),
-            self.query,
-            "followers",
-            self.page_size,
-            continue_from,
+            auth=HTTPBasicAuth(username, token),
+            query=self.query,
+            sort=sort,
+            order=order,
+            per_page=self.page_size,
+            continue_from=continue_from,
+            early_stop=early_stop
         )
         if self.tqcb is not None:
             tqcb.refresh()
@@ -123,7 +128,10 @@ class Stalker:
                             self.tqcb.refresh()
                             progress.refresh
             if self.tqcb is not None:
-                self.tqcb.total = int(self.total / self.page_size) + min(
-                    1, self.total % self.page_size
-                )
+                if self.early_stop > 0:
+                    self.tqcb.total = self.early_stop
+                else:
+                    self.tqcb.total = int(self.total / self.page_size) + min(
+                        1, self.total % self.page_size
+                    )
                 self.tqcb.update(1)

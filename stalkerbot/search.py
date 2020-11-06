@@ -16,16 +16,20 @@ class Search:
         self,
         auth: requests.auth.HTTPBasicAuth,
         query: str,
-        sort: str,
         per_page: int,
         continue_from: int = 1,
+        early_stop: int = 0,
         max_retries: int = 10,
         max_timeout: int = 32,
+        sort: str = "followers",
+        order: str = "desc",
     ):
         self.query = query
         self.sort = sort
+        self.order = order
         self.per_page = per_page
         self.page = continue_from
+        self.early_stop = early_stop
         self.auth = auth
         self.max_retries = max_retries
         self.max_timeout = max_timeout
@@ -47,12 +51,15 @@ class Search:
                 params={
                     "q": self.query,
                     "sort": self.sort,
-                    "order": "desc",
+                    "order": self.order,
                     "per_page": self.per_page,
                     "page": self.page,
                 },
                 headers=headers,
                 auth=self.auth,
+                _max_retries=self.max_retries,
+                _max_wait=self.max_timeout,
+                _backoff=backoff
             )
             if resp.status_code == 200:
                 data = resp.json()
@@ -75,7 +82,11 @@ class Search:
                 await asyncio.sleep(dt.timestamp() - datetime.utcnow().timestamp())
             else:
                 pass
-        if not items or len(items) == 0:
+        if (
+            not items
+            or len(items) == 0
+            or (self.early_stop > 0 and self.page >= self.early_stop)
+        ):
             raise StopAsyncIteration
 
         self.page += 1
