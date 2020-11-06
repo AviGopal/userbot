@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from asyncio.queues import Queue
+from asyncio.queues import Queue, QueueFull, QueueEmpty
 from http.cookiejar import CookieJar
 from random import random
 import os
@@ -32,6 +32,7 @@ class StalkerWorker:
         self.max_timeout = max_timeout
         self.tqcb = tqcb
         self.max_concurrent = max_concurrent
+        self.stop_flag = False
 
     async def get_userpage(self, url: str) -> BeautifulSoup:
         headers = {
@@ -74,13 +75,20 @@ class StalkerWorker:
             self.tqcb.refresh()
 
         async def _process_entry(url: str):
+            print(f"processing {url=}")
             done = False
             while not done:
                 done = True
                 try:
                     soup = await self.get_userpage(url)
                     parsed = self.parse_html(soup)
-                    await self.out.put(parsed)
+                    put_done = False
+                    while not put_done:
+                        try:
+                            self.out.put_nowait(parsed)
+                            put_done = True
+                        except QueueFull:
+                            await asyncio.sleep(0.1)
                 except (HTTPException, RateLimitExceededException) as exc:
                     logger.critical(f"Error fetching {url} - {exc}")
                     done = False
@@ -100,19 +108,22 @@ class StalkerWorker:
 
 
     async def astart(self, input_queue: Queue, batch_size: int = 25):
-        loop = asyncio.get_event_loop()
-
-        while loop.is_running:
+        while not self.stop_flag:
             batch = []
-            while len(batch) < batch_size:
-                batch.append(await input_queue.get())
-                input_queue.task_done()
+            while len(batch) < batch_size and not self.stop_flag:
+                try:
+                    batch.append(input_queue.get_nowait())
+                    input_queue.task_done()
+                except QueueEmpty:
+                    await asyncio.sleep(random())
             await self.process(batch)
 
     def start(self, input_queue: Queue, batch_size: int = 25) -> asyncio.Future:
         loop = asyncio.get_event_loop()
         return asyncio.ensure_future(self.astart(input_queue, batch_size), loop=loop)
 
+    def stop(self, *args, **kwargs):
+        self.stop_flag = True
 
 class CSVWriter:
     def __init__(
@@ -128,39 +139,49 @@ class CSVWriter:
             head, tail = os.path.split(self.filename)
             if len(head) > 0:
                 os.makedirs(head)
+        self.file = open(filename, 'w')
+        self._write_headers(self.file)
+
         self.max_interval = max_interval
         self.max_chunk = max_chunk
         self.data_queue = queue
-        self.include_headers = include_headers
         self._task: asyncio.Future = None
         self._chunk: list[ParsedData] = []
+        self.stop_flag = False
 
     async def write_queue(self):
         loop = asyncio.get_event_loop()
-        while loop.is_running:
-            self._chunk = []
-            timeout_write = loop.call_later(self.max_interval, self._write)
+        chunk = []
+        while not self.stop_flag:
+            timeout_write = loop.call_later(self.max_interval, self._write, chunk)
 
-            while len(self._chunk) < self.max_chunk:
-                self._chunk.append(await self.data_queue.get())
-                self.data_queue.task_done()
-
+            while len(chunk) < self.max_chunk and not self.stop_flag:
+                try:
+                    self._chunk.append(self.data_queue.get_nowait())
+                    self.data_queue.task_done()
+                except QueueEmpty:
+                    await asyncio.sleep(0.01)
             timeout_write.cancel()
-            self._write()
+            self._write(chunk)
 
-    def _write(self):
-        chunk = "\n".join(
-            [f"{row.name},{row.username},{row.email}" for row in self._chunk]
+        self._write(chunk)
+        
+
+    def _write(self, chunk):
+        chunk_str = "\n".join(
+            [f"{row.name},{row.username},{row.email}" for row in chunk]
         )
-        with open(self.filename, "a+") as fp:
-            if self.include_headers:
-                fp.write("name,username,email")
-            fp.write(chunk + "\n")
+        self.file.write(chunk_str)
+        self.file.write("\n")
+        chunk = []
+
+    def _write_headers(self, fp):
+        fp.write("name,username,email\n")
 
     def start(self):
         self._task = asyncio.ensure_future(
             self.write_queue, loop=asyncio.get_event_loop()
         )
 
-    def stop(self):
-        self._task.cancel()
+    def stop(self, *args, **kwargs):
+        self.stop_flag = True

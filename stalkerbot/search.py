@@ -76,11 +76,7 @@ class Search:
                 raise HTTPException(resp.status_code, resp.content)
 
         if not items or len(items) == 0:
-            raise StopIteration
+            raise StopAsyncIteration
 
         self.page += 1
         return SearchResult(total, self.page, [i["html_url"] for i in items])
-
-
-if __name__ == "__main__":
-    pass

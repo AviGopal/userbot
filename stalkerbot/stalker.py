@@ -1,6 +1,6 @@
 import asyncio
 import datetime
-from asyncio.queues import Queue
+from asyncio.queues import Queue, QueueFull
 from http.cookiejar import CookieJar
 
 from requests.auth import HTTPBasicAuth
@@ -53,15 +53,29 @@ class Stalker:
     def start(self):
         loop = asyncio.get_event_loop()
         tasks = [worker.start(self.search_queue) for worker in self.workers]
-        gather = asyncio.gather(
-            *tasks, self.writer.write_queue(), self._search(), loop=loop
+        
+        workers = asyncio.gather(
+            *tasks, loop=loop
         )
 
-        loop.run_until_complete(gather)
+        writer = loop.create_task(self.writer.write_queue())
+        search_task = loop.create_task(self._search())
+        for w in self.workers:
+            search_task.add_done_callback(w.stop)
+        search_task.add_done_callback(self.writer.stop)
+        
+        all_tasks = asyncio.gather(workers, writer, search_task, loop=loop)
+        loop.run_until_complete(all_tasks)
 
-    def stop(self):
-        loop = asyncio.get_running_loop()
-        loop.stop()
+
+    def stop(self, cb=None):
+        try:
+            loop = asyncio.get_running_loop()
+            loop.stop()
+        except RuntimeError:
+            # Already stopped
+            pass
+        
 
     def _init_workers(self, num_workers) -> list[StalkerWorker]:
         return [
@@ -77,7 +91,13 @@ class Stalker:
         async for result in self.search:
             self.total = result.total
             for item in result.items:
-                await self.search_queue.put(item)
+                put_done = False
+                while not put_done:
+                    try:
+                        self.search_queue.put_nowait(item)
+                        put_done = True
+                    except QueueFull:
+                        await asyncio.sleep(0.1)
             if self.tqcb is not None:
                 self.tqcb.total = int(self.total / self.page_size) + min(
                     1, self.total % self.page_size
