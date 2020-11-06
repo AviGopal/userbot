@@ -1,0 +1,21 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+beautifulsoup4 = "*"
+requests = "*"
+click = "*"
+browser-cookie3 = "*"
+tqdm = "*"
+
+[dev-packages]
+flake8 = "*"
+pyinstaller = "*"
+github-stalkerbot = {editable = true, path = "."}
+isort = "*"
+pipenv = "*"
+
+[requires]
+python_version = "3.9"

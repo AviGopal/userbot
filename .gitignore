@@ -1,0 +1,9 @@
+__pycache__/
+build/
+dist/
+.vscode/
+*.lock
+*.egg-info
+*.spec
+*.csv
+*.log
