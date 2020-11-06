@@ -33,8 +33,11 @@ async def requests_future(
         async def _request():
             return getattr(requests, method.lower())(*args, **kwargs)
 
-        resp: requests.Response = await _request()
-
+        try:
+            resp: requests.Response = await _request()
+        except requests.exceptions.ReadTimeout:
+            await asyncio.sleep(_backoff)
+            continue
         if resp.status_code == 429:
             await asyncio.sleep(min(2 ** i + _backoff, _max_wait))
         elif resp.status_code >= 502:
