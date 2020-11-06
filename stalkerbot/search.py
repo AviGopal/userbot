@@ -2,7 +2,7 @@ import asyncio
 from datetime import datetime, timedelta
 from random import random
 from typing import Union
-
+import logging
 import requests
 
 from stalkerbot.exc import HTTPException, RateLimitExceededException
@@ -58,6 +58,7 @@ class Search:
                 data = resp.json()
                 total = data["total_count"]
                 items = data["items"]
+                break
             elif resp.status_code == 429:
                 backoff = min(2 ** i + random(), self.max_timeout)
                 await asyncio.sleep(backoff)
@@ -73,8 +74,7 @@ class Search:
                 )
                 await asyncio.sleep(dt.timestamp() - datetime.utcnow().timestamp())
             else:
-                raise HTTPException(resp.status_code, resp.content)
-
+                pass
         if not items or len(items) == 0:
             raise StopAsyncIteration
 
