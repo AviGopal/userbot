@@ -90,7 +90,7 @@ def start(
                 click.prompt(
                     "sort value",
                     type=click.Choice(
-                        ["followers", "stars", "repositories"], case_sensitive=True
+                        ["followers", "joined", "repositories", ""], case_sensitive=True
                     ),
                     show_choices=True,
                 )
