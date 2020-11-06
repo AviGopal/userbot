@@ -9,7 +9,6 @@ from tqdm.asyncio import tqdm
 
 from stalkerbot.stalker import Stalker
 
-
 @click.Group
 def cli():
     pass
