@@ -1,5 +1,7 @@
 import logging
 from logging.config import dictConfig
+import keyring
+import os
 
 dictConfig(
     {
@@ -26,3 +28,11 @@ dictConfig(
 root = logging.getLogger()
 file_handler = logging.handlers.RotatingFileHandler('stalkerbot.log')
 root.addHandler(file_handler)
+
+try:
+    with open('token') as fp:
+        token = fp.read().strip()
+        if len(token) > 0:
+            os.environ["GITHUB_TOKEN"] = token
+except Exception:
+    pass

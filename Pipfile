@@ -9,6 +9,8 @@ requests = "*"
 click = "*"
 browser-cookie3 = "*"
 tqdm = "*"
+keyring = "*"
+"keyrings.alt" = "*"
 
 [dev-packages]
 flake8 = "*"
