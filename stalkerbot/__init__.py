@@ -26,6 +26,7 @@ dictConfig(
 )
 
 root = logging.getLogger()
+root.setLevel(10)
 file_handler = logging.handlers.RotatingFileHandler('stalkerbot.log')
 root.addHandler(file_handler)
 

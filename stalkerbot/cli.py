@@ -23,7 +23,7 @@ def cli():
 @click.option("-e", "--early-stop", default=0)
 @click.option("-s", "--sort", default="followers")
 @click.option("-o", "--order", default="desc")
-@click.option("-o", "--output", default="data.csv")
+@click.option("-o", "--output", default="data/users.csv")
 @click.option("-w", "--workers", default=4)
 @click.option("-t", "--token", default=None, envvar="GITHUB_TOKEN")
 @click.option("-u", "--username", default=None, envvar="GITHUB_USERNAME")
@@ -169,5 +169,3 @@ def start(
     except click.exceptions.Abort:
         click.echo("exiting...")
         stalker.stop()
-    if tq:
-        tq.write("")

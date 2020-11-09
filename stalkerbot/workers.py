@@ -150,7 +150,7 @@ class CSVWriter:
         if not os.path.exists(filename):
             head, tail = os.path.split(self.filename)
             if len(head) > 0:
-                os.makedirs(head)
+                os.makedirs(head, exist_ok=True)
         self._write_headers()
 
         self.max_interval = max_interval
