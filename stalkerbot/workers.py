@@ -101,16 +101,16 @@ class CSVWriter:
                     self._save(data)
                     continue
                 chunk.append(f"{data.name},{data.login},{data.email}\n")
-                logger.debug("batching total: %i", len(chunk))
                 if len(chunk) >= self.max_chunk:
-                    logger.debug("sending write call")
                     timeout.cancel()
-                    await loop.run_in_executor(None, partial(self._write, chunk))
-                    # self._write(chunk)
+                    self._write(chunk)
+                    # await loop.run_in_executor(None, partial(self._write, chunk))
+                    self._write(chunk)
                     timeout = loop.call_at(
                         loop.time() + self.max_interval,
                         callback=partial(self._write, chunk),
                     )
+                    chunk = []
             except QueueEmpty:
                 if timeout.cancelled:
                     timeout = loop.call_at(
@@ -135,11 +135,9 @@ class CSVWriter:
 
     def _save(self, state):
         with open(".state", "wb") as fp:
-            logger.debug("saving state")
             pickle.dump(state, fp)
 
     def _write(self, chunk):
-        logger.debug("writing %i", len(chunk))
         with open(self.filename, "a+") as fp:
             fp.writelines(chunk)
             if self.progress is not None:

@@ -83,19 +83,15 @@ class Stalker:
             gen = self.search.gen()
             kwargs, state = await gen.asend(None)
             while True:
-                logger.debug("fetching")
                 await self.search_queue.put(kwargs)
                 raw = await self.data_queue.get()
-                logger.debug("parsing")
                 resp = QueryResponse(raw)
                 if self.progress is not None:
                     self.progress.update()
-                logger.debug("putting")
                 for user in resp.users:
                     if user.email is not None and len(user.email) > 0:
                         await self.output_queue.put(user)
                 self.state = state
-                logger.debug("sending")
                 await self.writer.data_queue.put(state)                    
                 kwargs, state = await gen.asend(resp)
                 await asyncio.sleep(max(0.01, random()))

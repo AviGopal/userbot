@@ -46,14 +46,15 @@ class Search:
         }
         delta = timedelta(days=1)
         if self.continue_from is None:
-            start_date = datetime.utcnow()
+            start_date = datetime.utcnow() - delta
             end_date = datetime.utcnow()
         else:
-            start_date = self.continue_from
+            start_date = self.continue_from - delta
             end_date = self.continue_from
-        start_date -= delta
+        query = self.query + " sort:joined"
+
         if "created" not in self.query:
-            query = self.query + f" created:{start_date.isoformat()}..{end_date.isoformat()}"
+            query = self.query + f" created:{start_date.date().isoformat()}..{end_date.date().isoformat()}"
         else:
             query = self.query 
 
@@ -69,19 +70,22 @@ class Search:
             used = tqdm(desc="used", unit="requests", total=5000, initial=response.rateLimit.used)
         prev = [average for _ in range(5)]
         while True:
-            if not response.pageInfo.hasNextPage:
+            if not response.pageInfo.hasPreviousPage:
                 prev = [*prev[:-1], response.userCount]
                 average = sum(prev)/len(prev)
                 if "created" not in self.query:
                     if response.userCount > 1000:
-                        end_date = response.users[0].createdAt
-                        query = self.query + f" created:{start_date.isoformat()}..{end_date.isoformat()}"
+                        end_date -= delta / 2
+                        start_date -= delta / 2
+                        start_date.date().isoformat
+                        query = self.query + f" created:{start_date.isoformat()}..{end_date.isoformat()} sort:joined"
                         self.cursor = None
                     elif start_date < datetime(year=2008, month=4, day=1):
                         raise StopAsyncIteration
                     else:
-                        query = self.query + f" created:{start_date.isoformat()}..{end_date.isoformat()}"
-                        start_date = start_date - delta
+                        query = self.query + f" created:{start_date.isoformat()}..{end_date.isoformat()} sort:joined"
+                        end_date = datetime.fromisoformat(start_date.isoformat())
+                        start_date -= delta
                         self.cursor = None
                 else:
                     break
@@ -102,6 +106,6 @@ class Search:
                 await asyncio.sleep(sleep_time.seconds)
                 used.reset()
 
-            data = {"query": create_query(self.cursor)}
+            data = {"query": create_query(self.cursor, query)}
             response = yield ({"headers": headers, "json": data}, State(end_date, self.query, self.cursor))
         raise StopAsyncIteration

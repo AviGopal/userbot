@@ -56,7 +56,7 @@ def start(
     state = None
 
     if os.path.exists('.state'):
-        if not click.confirm("Continue from last saved state? (Y/n)"):
+        if click.confirm("Continue from last saved state? (Y/n)"):
             with open('.state', 'rb') as fp:
                 state = pickle.load(fp)
                 continue_from = state.continue_from

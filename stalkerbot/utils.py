@@ -76,6 +76,7 @@ class RateLimit:
 @dataclass
 class PageInfo:
     hasNextPage: bool
+    hasPreviousPage: bool
     endCursor: str
 
 
@@ -98,5 +99,5 @@ class QueryResponse:
 def create_query(cursor: str = None, q: str = "language:python3", page_size: int = 100):
     cursor_arg = f'before: "{cursor}",' if cursor is not None else ""
     search_args = f'query: "{q}", {cursor_arg} last: {page_size}, type: USER'
-    q = f"{{rateLimit{{cost used remaining resetAt}} search({search_args}) {{pageInfo {{hasNextPage endCursor}} userCount nodes {{... on User {{name login email createdAt}}}}}}}}\n"
+    q = f"{{rateLimit{{cost used remaining resetAt}} search({search_args}) {{pageInfo {{hasNextPage hasPreviousPage endCursor}} userCount nodes {{... on User {{name login email createdAt}}}}}}}}\n"
     return q
