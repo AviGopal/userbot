@@ -14,124 +14,36 @@ from stalkerbot.exc import (
     ParsingError,
     RateLimitExceededException,
 )
-from stalkerbot.utils import ParsedData, SearchResult, requests_future
+from stalkerbot.utils import ParsedData, SearchResult, requests_future, State
 from functools import partial
 from tqdm.asyncio import tqdm
+import pickle
+
 logger = logging.getLogger("worker")
 
 
 class StalkerWorker:
     def __init__(
         self,
-        cookiejar: CookieJar,
         output_queue: Queue,
         max_retries=10,
         max_timeout=32,
         max_concurrent=25,
         tqcb: "tqdm_asyncio" = None,
     ):
-        self.cookies = cookiejar
-        self.out = output_queue
-        self.processed = 0
-        self.total = 0
+        self.output_queue = output_queue
         self.max_retries = max_retries
         self.max_timeout = max_timeout
-        self.tqcb = tqcb
-        self.max_concurrent = max_concurrent
         self.stop_flag = False
 
-    async def get_userpage(self, url: str) -> BeautifulSoup:
-        headers = {
-            "Accept": "text/html",
-            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.111 Safari/537.36",
-            "cache-control": "public",
-        }
-
-        resp: requests.Response = await requests_future(
-            "get",
-            url,
-            headers=headers,
-            cookies=self.cookies,
-            timeout=10,
-            _backoff=random(),
-            _max_retries=self.max_retries,
-            _max_wait=self.max_timeout,
-        )
-        if resp.status_code == 200:
-            return BeautifulSoup(resp.content, "html.parser")
-        else:
-            raise HTTPException(resp.status_code, resp.content)
-
-    def parse_html(self, html: BeautifulSoup) -> ParsedData:
-        try:
-            return ParsedData(
-                name=html.find("span", class_="vcard-fullname").string,
-                username=html.find("span", class_="vcard-username").string,
-                email=html.find("li", itemprop="email").a.string,
-            )
-        except AttributeError:
-            raise ParsingError
-
-    async def process_entry(self, url: str):
-        logger.debug("processing %s", url)
-        done = False
-        while not done:
-            done = True
-            try:
-                soup = await self.get_userpage(url)
-                logger.debug("souped")
-                parsed = self.parse_html(soup)
-                logger.debug("parsed")
-                put_done = False
-
-                while not put_done:
-                    try:
-                        self.out.put_nowait(parsed)
-                        put_done = True
-                        logger.debug("inserted")
-                    except QueueFull:
-                        raise QueueFull
-                        await asyncio.sleep(0.1)
-            except (HTTPException, RateLimitExceededException) as exc:
-                logger.critical("Error fetching %s - %s", url, exc)
-                done = False
-                await asyncio.sleep(self.max_timeout * random())
-                continue
-            except ParsingError:
-                logger.debug("parsing error")
-            finally:
-                if done:
-                    self.processed += 1
-
-    async def process_batch(self, entries: list[str]):
-        logger.debug("processing %i entries", len(entries))
-        self.total = len(entries)
-        self.processed = 0
-        if self.tqcb is not None:
-            self.tqcb.total = self.total
-            self.tqcb.reset()
-            self.tqcb.refresh()
-
-        tasks = [self._process_entry(url) for url in entries]
-        gather = asyncio.gather(*tasks, loop=asyncio.get_event_loop())
-        await gather
-
-    async def astart(self, input_queue: Queue, batch_size=10):
-        batch = []
+    async def astart(self, input_queue: Queue):
         while not self.stop_flag or (self.stop_flag and input_queue.qsize() > 0):
-            try:
-                entry = input_queue.get_nowait()
-                batch.append(asyncio.get_event_loop().create_task(self.process_entry(entry)))
-            except QueueEmpty:
-                await asyncio.sleep(10*random())
-            
-            if self.stop_flag or (len(batch) > batch_size and not self.stop_flag):
-                await asyncio.gather(*batch)
-
-
-    def start(self, input_queue: Queue) -> asyncio.Future:
-        loop = asyncio.get_event_loop()
-        return asyncio.ensure_future(self.astart(input_queue, batch_size), loop=loop)
+            kwargs = await input_queue.get()
+            resp = await requests_future(
+                "post", "https://api.github.com/graphql", **kwargs
+            )
+            if resp.status_code == 200:
+                await self.output_queue.put(resp.content)
 
     def stop(self, *args, **kwargs):
         self.stop_flag = True
@@ -142,9 +54,11 @@ class CSVWriter:
         self,
         queue: Queue,
         filename: str,
-        max_interval: int = 60,
+        max_interval: int = 2,
         max_chunk: int = 100,
         include_headers: bool = False,
+        silent: bool = False,
+        early_stop: int = None,
     ):
         self.filename = filename
         if not os.path.exists(filename):
@@ -156,47 +70,85 @@ class CSVWriter:
         self.max_interval = max_interval
         self.max_chunk = max_chunk
         self.data_queue = queue
-        self._task: asyncio.Future = None
-        self._chunk: list[ParsedData] = []
         self.stop_flag = False
+        self.early_stop = early_stop
+        self.total = 0
+        if not silent:
+            self.progress = tqdm(desc="written", unit="emails")
+        else:
+            self.progress = None
+        self.state = None
 
-    async def write_queue(self):
+    async def astart(self):
         loop = asyncio.get_event_loop()
         chunk = []
 
-        timeout = loop.call_at(loop.time() + self.max_interval, callback=partial(self._write, chunk))
+        timeout = loop.call_at(
+            loop.time() + self.max_interval, callback=partial(self._write, chunk)
+        )
         logger.debug("set write interval %i", self.max_interval)
 
         while not self.stop_flag:
             if timeout.cancelled:
-                timeout = loop.call_at(loop.time() + self.max_interval, callback=partial(self._write, chunk))
+                timeout = loop.call_at(
+                    loop.time() + self.max_interval,
+                    callback=partial(self._write, chunk),
+                )
             try:
                 data = self.data_queue.get_nowait()
-                chunk.append(f"{data.name},{data.username},{data.email}\n")
+                if isinstance(data, State):
+                    self.state = data
+                    self._save(data)
+                    continue
+                chunk.append(f"{data.name},{data.login},{data.email}\n")
                 logger.debug("batching total: %i", len(chunk))
                 if len(chunk) >= self.max_chunk:
                     logger.debug("sending write call")
                     timeout.cancel()
-                    loop.call_at(loop.time() + 0.01, callback=partial(self._write, chunk))
+                    await loop.run_in_executor(None, partial(self._write, chunk))
+                    # self._write(chunk)
+                    timeout = loop.call_at(
+                        loop.time() + self.max_interval,
+                        callback=partial(self._write, chunk),
+                    )
             except QueueEmpty:
-                await asyncio.sleep(0.05)
-                    
-        #Stop flag triggered
+                if timeout.cancelled:
+                    timeout = loop.call_at(
+                        loop.time() + self.max_interval,
+                        callback=partial(self._write, chunk),
+                    )
+                await asyncio.sleep(self.max_interval)
+
+        # Stop flag triggered
 
         while self.data_queue.qsize() > 0:
             try:
                 data = self.data_queue.get_nowait()
-                chunk.append(f"{data.name},{data.username},{data.email}")
+                if isinstance(data, State):
+                    self._save(data)
+                    continue
+                chunk.append(f"{data.name},{data.login},{data.email}\n")
             except QueueEmpty:
                 pass
-        
+
         self._write(chunk)
+
+    def _save(self, state):
+        with open(".state", "wb") as fp:
+            logger.debug("saving state")
+            pickle.dump(state, fp)
 
     def _write(self, chunk):
         logger.debug("writing %i", len(chunk))
         with open(self.filename, "a+") as fp:
             fp.writelines(chunk)
+            if self.progress is not None:
+                self.progress.update(len(chunk))
+        self.total += len(chunk)
+        if self.early_stop is not None and self.early_stop > 0 and self.total > self.early_stop:
+            self.stop_flag = True
         chunk.clear()
+        self._save(self.state)
 
     def _write_headers(self):
         with open(self.filename, "w") as fp:

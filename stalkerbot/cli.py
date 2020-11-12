@@ -6,8 +6,9 @@ import browser_cookie3
 import click
 import requests
 from tqdm.asyncio import tqdm
-
+import os
 from stalkerbot.stalker import Stalker
+import pickle
 
 @click.Group
 def cli():
@@ -19,7 +20,7 @@ def cli():
 @click.option("--no-auth", is_flag=True, default=False)
 @click.option("-q", "--query", default="language:python3")
 @click.option("-z", "--page-size", default=250)
-@click.option("-c", "--continue-from", default=1)
+@click.option("-c", "--continue-from", default=None)
 @click.option("-e", "--early-stop", default=0)
 @click.option("-s", "--sort", default="followers")
 @click.option("-o", "--order", default="desc")
@@ -41,32 +42,7 @@ def start(
     silent,
     no_auth,
 ):
-    if not no_auth:
-        cookies = browser_cookie3.load(domain_name="github.com")
-        if len(cookies) == 0:
-            webbrowser.open_new("https://github.com/login")
-            click.pause("Sign in then hit any key, ctrl+c or cmd+c to quit")
-            cookies = browser_cookie3.load(domain_name="github.com")
-        if len(cookies) == 0:
-            click.echo("Can't load login info from github")
-            raise click.exceptions.Exit(1)
-    else:
-        cookies = CookieJar()
     click.clear()
-
-    if not username:
-        cookie_dict = requests.utils.dict_from_cookiejar(cookies)
-        if "dotcom_user" in cookie_dict:
-            username = cookie_dict["dotcom_user"]
-        else:
-            click.echo(
-                "Yes I know I'm making you enter this twice... you can set the GITHUB_USERNAME environment variable to skip this"
-            )
-            username = click.prompt("GitHub Username")
-
-    if not username:
-        click.echo("Username is invalid")
-        raise click.exceptions.Exit(1)
 
     if not token:
         click.echo("(You can set the GITHUB_TOKEN environment variable to skip this)")
@@ -77,95 +53,62 @@ def start(
 
     click.clear()
 
+    state = None
+
+    if os.path.exists('.state'):
+        if not click.confirm("Continue from last saved state? (Y/n)"):
+            with open('.state', 'rb') as fp:
+                state = pickle.load(fp)
+                continue_from = state.continue_from
+                query = state.query
+
     if not silent:
-        click.echo(f"current query is {query}")
-        if click.confirm("enter new query? (y/N)"):
-            query = click.prompt("query")
+        if not state:
+            click.echo(f"current query is {query}")
+            if click.confirm("enter new query? (y/N)"):
+                query = click.prompt("query")
 
-        click.echo(f"results will be sorted by {sort}")
+            click.echo(f"continue from {continue_from}")
+            if click.confirm(
+                "change? (y/N)",
+            ):
+                continue_from = int(click.prompt("page number"))
+
+        click.echo(f"stopping after adding {early_stop}? (0 runs until completion)")
         if click.confirm(
             "change? (y/N)",
         ):
-            sort = str(
-                click.prompt(
-                    "sort value",
-                    type=click.Choice(
-                        ["followers", "joined", "repositories", ""], case_sensitive=True
-                    ),
-                    show_choices=True,
-                )
-            )
-
-        click.echo(f"results will be in {order} order")
-        if click.confirm(
-            "change? (y/N)",
-        ):
-            order = str(
-                click.prompt(
-                    "direction",
-                    type=click.Choice(["asc", "desc"], case_sensitive=True),
-                    show_choices=True,
-                )
-            )
-
-        click.echo(f"Handling {page_size} entries per page (max is 1000)")
-        if click.confirm(
-            "Change? (y/N)",
-        ):
-            page_size = int(click.prompt("page size"))
-
-        click.echo(f"Starting from page {continue_from}")
-        if click.confirm(
-            "change? (y/N)",
-        ):
-            continue_from = int(click.prompt("page number"))
-
-        click.echo(
-            f"Early stop is {'disabled' if early_stop == 0 else f'enabled on page {early_stop}' }"
-        )
-        if click.confirm(
-            "change? (y/N)",
-        ):
-            early_stop = int(click.prompt("page number, 0 to disable"))
-
-        click.echo(f"stalker will start with {workers} workers")
-        if click.confirm(
-            "change? (y/N)",
-        ):
-            workers = int(click.prompt("workers"))
+            early_stop = int(click.prompt("number of entries"))
 
         click.echo(f"output directory is: {output}")
         if click.confirm(
             "change? (y/N)",
         ):
             output = str(click.prompt("filepath"))
+
+    if not silent:
         click.clear()
         click.echo(f"started at:  {datetime.now().isoformat()}")
         click.echo(f"user:  {username}")
         click.echo(f"query: {query}\n")
         click.echo(f"starting from: {continue_from}\n")
-        click.echo(f"ending early: {f'page {early_stop}' if early_stop else 'no'}\n")
-
-        tq = tqdm(desc="pages", unit="pg", initial=(continue_from - 1))
-    else:
-        tq = None
-
+        click.echo(f"ending early: {f'minimum {early_stop} entries' if early_stop else 'no'}\n")
     stalker = Stalker(
-        cookiejar=cookies,
         query=query,
-        username=username,
         token=token,
-        sort=sort,
-        order=order,
-        workers=workers,
-        page_size=page_size,
         continue_from=continue_from,
-        early_stop=early_stop,
         output_path=output,
-        tqcb=tq,
+        silent=silent,
+        state=state,
+        early_stop=early_stop
     )
     try:
         stalker.start()
     except click.exceptions.Abort:
         click.echo("exiting...")
         stalker.stop()
+    if not silent:
+        tq = tqdm()
+        tq.write(f"saved state to .state")
+    else:
+        print(f"saved state to .state")
