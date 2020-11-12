@@ -93,7 +93,7 @@ class Search:
             else:
                 self.cursor = response.pageInfo.endCursor
             if not self.silent:
-                used.update()
+                used.update(response.rateLimit.cost)
 
             if response.rateLimit.remaining < response.rateLimit.cost or response.rateLimit.remaining == 0:
                 if not self.silent:

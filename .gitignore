@@ -8,3 +8,4 @@ dist/
 *.csv
 *.log
 token
+.state
