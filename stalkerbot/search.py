@@ -93,14 +93,14 @@ class Search:
             else:
                 self.cursor = response.pageInfo.endCursor
             if not self.silent:
-                used.initial = initial=response.rateLimit.used
-                used.refresh()
+                used.update()
 
             if response.rateLimit.remaining < response.rateLimit.cost or response.rateLimit.remaining == 0:
                 if not self.silent:
                     used.write(f'sleeping until {response.rateLimit.resetAt.isoformat()}')
                 sleep_time = response.rateLimit.resetAt - datetime.utcnow()
                 await asyncio.sleep(sleep_time.seconds)
+                used.reset()
 
             data = {"query": create_query(self.cursor)}
             response = yield ({"headers": headers, "json": data}, State(end_date, self.query, self.cursor))
