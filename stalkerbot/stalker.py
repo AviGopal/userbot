@@ -27,17 +27,24 @@ class Stalker:
         output_path: str = "data/github_users.csv",
         silent: bool = False,
         state: State = None,
+        org_flag: bool = False,
     ):
         self.data_queue = Queue()
         self.search_queue = Queue()
         self.output_queue = Queue()
+        self.org_flag = org_flag
         if not silent:
             self.progress = tqdm(desc="progress", position=0, unit="pages")
         else:
             self.progress = None
 
         self.worker = StalkerWorker(self.data_queue)
-        self.writer = CSVWriter(self.output_queue, filename=output_path, early_stop=early_stop, silent=silent)
+        self.writer = CSVWriter(
+            self.output_queue,
+            filename=output_path,
+            early_stop=early_stop,
+            silent=silent,
+        )
         self.query = query
         self.state = continue_from
         self.start_time = datetime.datetime.utcnow()
@@ -47,7 +54,8 @@ class Stalker:
             token=token,
             continue_from=continue_from,
             state=state,
-            silent=silent
+            silent=silent,
+            org_flag=self.org_flag,
         )
 
     def start(self):
@@ -92,7 +100,7 @@ class Stalker:
                     if user.email is not None and len(user.email) > 0:
                         await self.output_queue.put(user)
                 self.state = state
-                await self.writer.data_queue.put(state)                    
+                await self.writer.data_queue.put(state)
                 kwargs, state = await gen.asend(resp)
                 await asyncio.sleep(max(0.01, random()))
         except RuntimeError:

@@ -5,13 +5,15 @@ import json
 import requests
 from logging import getLogger
 
-logger = getLogger('utils')
+logger = getLogger("utils")
+
 
 @dataclass(frozen=True)
 class State:
     continue_from: datetime.datetime
     query: str
     cursor: str
+
 
 @dataclass
 class SearchResult:
@@ -41,8 +43,10 @@ async def requests_future(
     **kwargs,
 ) -> requests.Response:
     for i in range(_max_retries):
+
         async def _request():
             return getattr(requests, method.lower())(*args, **kwargs)
+
         try:
             resp: requests.Response = await _request()
             return resp
@@ -96,8 +100,13 @@ class QueryResponse:
         self.userCount = data["search"]["userCount"]
 
 
-def create_query(cursor: str = None, q: str = "language:python3", page_size: int = 100):
+def create_query(
+    cursor: str = None,
+    q: str = "language:python3",
+    page_size: int = 100,
+    user_type: str = "User",
+) -> str:
     cursor_arg = f'before: "{cursor}",' if cursor is not None else ""
     search_args = f'query: "{q}", {cursor_arg} last: {page_size}, type: USER'
-    q = f"{{rateLimit{{cost used remaining resetAt}} search({search_args}) {{pageInfo {{hasNextPage hasPreviousPage endCursor}} userCount nodes {{... on User {{name login email createdAt}}}}}}}}\n"
+    q = f"{{rateLimit{{cost used remaining resetAt}} search({search_args}) {{pageInfo {{hasNextPage hasPreviousPage endCursor}} userCount nodes {{... on {user_type} {{name login email createdAt}}}}}}}}\n"
     return q

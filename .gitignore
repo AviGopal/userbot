@@ -9,3 +9,5 @@ dist/
 *.log
 token
 .state
+.env
+*.txt
