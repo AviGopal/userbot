@@ -26,9 +26,9 @@ def cli():
 @click.option("-o", "--order", default="desc")
 @click.option("-o", "--output", default="data/users.csv")
 @click.option("-w", "--workers", default=4)
-@click.option("-t", "--token", default=None, envvar="GITHUB_TOKEN")
-@click.option("-u", "--username", default=None, envvar="GITHUB_USERNAME")
-@click.option("-o", "--org", default=False, is_flag=True)
+@click.option("-t", "--token", default=None, envvar="GITHUB_TOKEN", help="Github token")
+@click.option("-u", "--username", default=None, envvar="GITHUB_USERNAME",help="Github username")
+@click.option("-o", "--org", default=False, is_flag=True,help="Turn this flag on if you want to email to orgs")
 def start(
     query,
     page_size,
