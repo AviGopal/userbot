@@ -2,13 +2,13 @@ import webbrowser
 from datetime import datetime
 from http.cookiejar import CookieJar
 
-import browser_cookie3
 import click
 import requests
 from tqdm.asyncio import tqdm
 import os
 from stalkerbot.stalker import Stalker
 import pickle
+
 
 @click.Group
 def cli():
@@ -26,8 +26,9 @@ def cli():
 @click.option("-o", "--order", default="desc")
 @click.option("-o", "--output", default="data/users.csv")
 @click.option("-w", "--workers", default=4)
-@click.option("-t", "--token", default=None, envvar="GITHUB_TOKEN")
-@click.option("-u", "--username", default=None, envvar="GITHUB_USERNAME")
+@click.option("-t", "--token", default=None, envvar="GITHUB_TOKEN", help="Github token")
+@click.option("-u", "--username", default=None, envvar="GITHUB_USERNAME",help="Github username")
+@click.option("-o", "--org", default=False, is_flag=True,help="Turn this flag on if you want to email to orgs")
 def start(
     query,
     page_size,
@@ -41,6 +42,7 @@ def start(
     username,
     silent,
     no_auth,
+    org,
 ):
     click.clear()
 
@@ -55,13 +57,12 @@ def start(
 
     state = None
 
-    if os.path.exists('.state'):
+    if os.path.exists(".state"):
         if click.confirm("Continue from last saved state? (Y/n)"):
-            with open('.state', 'rb') as fp:
+            with open(".state", "rb") as fp:
                 state = pickle.load(fp)
                 continue_from = state.continue_from
                 query = state.query
-
     if not silent:
         if not state:
             click.echo(f"current query is {query}")
@@ -85,14 +86,17 @@ def start(
             "change? (y/N)",
         ):
             output = str(click.prompt("filepath"))
-
+    if org:
+        query = "type:org " + query
     if not silent:
         click.clear()
         click.echo(f"started at:  {datetime.now().isoformat()}")
         click.echo(f"user:  {username}")
         click.echo(f"query: {query}\n")
         click.echo(f"starting from: {continue_from}\n")
-        click.echo(f"ending early: {f'minimum {early_stop} entries' if early_stop else 'no'}\n")
+        click.echo(
+            f"ending early: {f'minimum {early_stop} entries' if early_stop else 'no'}\n"
+        )
     stalker = Stalker(
         query=query,
         token=token,
@@ -100,7 +104,8 @@ def start(
         output_path=output,
         silent=silent,
         state=state,
-        early_stop=early_stop
+        early_stop=early_stop,
+        org_flag=org,
     )
     try:
         stalker.start()

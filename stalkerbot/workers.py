@@ -143,7 +143,11 @@ class CSVWriter:
             if self.progress is not None:
                 self.progress.update(len(chunk))
         self.total += len(chunk)
-        if self.early_stop is not None and self.early_stop > 0 and self.total > self.early_stop:
+        if (
+            self.early_stop is not None
+            and self.early_stop > 0
+            and self.total > self.early_stop
+        ):
             self.stop_flag = True
         chunk.clear()
         self._save(self.state)
